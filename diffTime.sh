@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Time Arithmetic
-
 START=$1
 END=$2
 

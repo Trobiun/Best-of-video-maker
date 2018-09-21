@@ -2,25 +2,14 @@
 set -o errexit
 set -o nounset
 
-#CUTS_DIR_NAME="cuts"
-#CLIPS_DIR_NAME="clips"
-#
-#CUTS_LIST_DIR_NAME="${CUTS_DIR_NAME}_lists"
-#CLIPS_LIST_DIR_NAME="${CLIPS_DIR_NAME}_lists"
-#
-#FINAL_CLIPS_LIST_FILE="clips.txt"
-#
-#FFMPEG_ARGS="-map_metadata -1" #-avoid_negative_ts 1
-#FFMPEG_CODEC_OPTIONS="-c:v copy -c:a copy"
-#FFMPEG_EXT=mp4
 
 ffmpeg_bin=$(./selectFFmpeg.sh "static")
 
 
-increment_counter() {
-	counter=$((counter + 1))
-	echo "${counter}"
-}
+#increment_counter() {
+#	counter=$((counter + 1))
+#	echo "${counter}"
+#}
 
 generate_filter_complex_args() {
 	list_clips_file=$1
@@ -70,7 +59,9 @@ multiple_extract() {
 		#	i=$((i + 1))
 		#done < "${list_clips_file}"
 		#filter_complex_audio+=';'
-		filter_complex_audio=$(generate_filter_complex_args "${list_clips_file}" "${nb_split}" "a" "copy" "increment_counter")
+		
+		#filter_complex_audio=$(generate_filter_complex_args "${list_clips_file}" "${nb_split}" "a" "copy" "increment_counter")
+		
 		#filter_complex_video=$()
 		extract_cmd="\"${ffmpeg_bin}\" -fflags +genpts -i \"${input}\" -filter_complex " #-filter_complex '${filter_complex_audio}'
 		filter_complex="'[0:v]split=${nb_split}"
@@ -117,44 +108,66 @@ multiple_extract() {
 	echo "${counter}"
 }
 
-#if [ $# -ge 3 ]
-#then
-	#project_name=$1
-	#input_dir_name=$2
-	#temp_dir_name=$3
-	final_clips_list_file="${project_name}/${INPUT_DIR_NAME}/${FINAL_CLIPS_LIST_FILE}"
-	rm -f "${final_clips_list_file}"
-	while IFS= read -r 'video'
-	do
-		filebasename="$(basename "${video}")"
-		filename="${filebasename%.*}"
-		filename_escaped=$(sed -e 's/-/_/' <<< "${filename}")
-		extension="${filebasename##*.}"
-		dir="${project_name}/${TEMP_DIR_NAME}/${filename}"
-		mkdir -p "${dir}"
-		counter=0
-		counter_nb=0
-		while IFS= read -r 'list_file'
+extract_with_filter() {
+	input=$1
+	#input_extension="${input##*.}"
+	output_dir=$2
+	list_clips_file=$3
+	if [ -d "${output_dir}" ]
+	then
+		while IFS= read -r 'line' || [[ -n "${line}" ]]
 		do
-			clips_basename=$(basename "${list_file}")
-			clips_filename="${clips_basename%.*}"
-			type_extract=$(cut -d'-' -f2 <<< "${clips_filename}" | sed -e 's/^[[:space:]]//g;s/[[:space:]]$//g')
-			number=$(cut -d'-' -f3 <<< "${clips_filename}" | sed -e 's/^[[:space:]]//g')
-			type_extract_dir="${dir}/${type_extract}"
-			#mkdir -p "${type_extracts_dir}/${CUTS_DIR_NAME}"
-			cut_dir="${type_extract_dir}/${CUTS_DIR_NAME}"
-			clips_dir="${type_extract_dir}/${CLIPS_DIR_NAME}/${number}"
-			mkdir -p "${clips_dir}"
-			cut_video=$(find "${cut_dir}" -name "${filename_escaped} - ${type_extract} - ${number}.*")
-			#cut_video="${cut_dir}/${filename_escaped} - ${type_extract} - ${number}.avi"
-			counter_nb=$(multiple_extract "${cut_video}" "${clips_dir}" "${list_file}" "${counter}")
-			echo "${counter_nb}"
-			#counter=$((counter_nb + 1))
-			while IFS= read -r 'line' || [[ -n "${line}" ]]
-			do
-				number_clip=$(cut -f1 <<< "${line}")
-				echo "file '../../${clips_dir}/${number_clip}.${FFMPEG_EXT}'" >>  "${final_clips_list_file}"
-			done < "${list_file}"
-		done < <(find "${project_name}/${INPUT_DIR_NAME}/${CLIPS_LIST_DIR_NAME}" -type f -name "${filename_escaped}*.clips" -print)
-	done < <(find "${project_name}/${INPUT_DIR_NAME}" -maxdepth 1 -type f -exec file -N --mime-type -- {} + | sed -n 's!: video/[^:]*$!!p')
-#fi
+			number=$(cut -f1 <<< "${line}")
+			start=$(cut -f2 <<< "${line}")
+			end=$(cut -f3 <<< "${line}")
+			duration=$(./diffTime.sh "${start}" "${end}")
+			output_clip="${output_dir}/${number}.${FFMPEG_EXT}"
+			ss=""
+			args="-to ${end} ${FFMPEG_UNCOMPRESSED_CODEC_OPTIONS} -f matroska pipe:1"
+			if [ "${start}" != "00:00:00" ]
+			then
+				ss="-ss ${start}"
+				args="-ss ${start} ${args}"
+			fi
+			"${ffmpeg_bin}" -fflags +genpts -i "${input}" ${args} < /dev/null | "./${filter_clips}" "${output_clip}"
+			#"${ffmpeg_bin}" -fflags +genpts -i "${input}" -ss "${start}"  -t "${duration}" ${FFMPEG_TEMP_CODEC_OPTIONS} -f matroska pipe:1 < /dev/null |  "./${filter_clips}" "${output_clip}"
+		done < "${list_clips_file}"
+	fi
+}
+
+
+final_clips_list_file="${project_name}/${INPUT_DIR_NAME}/${FINAL_CLIPS_LIST_FILE}"
+rm -f "${final_clips_list_file}"
+while IFS= read -r 'video'
+do
+	filebasename="$(basename "${video}")"
+	filename="${filebasename%.*}"
+	filename_escaped=$(sed -e 's/-/_/' <<< "${filename}")
+	extension="${filebasename##*.}"
+	dir="${project_name}/${TEMP_DIR_NAME}/${filename}"
+	mkdir -p "${dir}"
+	counter=0
+	counter_nb=0
+	while IFS= read -r 'list_file'
+	do
+		clips_basename=$(basename "${list_file}")
+		clips_filename="${clips_basename%.*}"
+		type_extract=$(cut -d'-' -f2 <<< "${clips_filename}" | sed -e 's/^[[:space:]]//g;s/[[:space:]]$//g')
+		number=$(cut -d'-' -f3 <<< "${clips_filename}" | sed -e 's/^[[:space:]]//g')
+		type_extract_dir="${dir}/${type_extract}"
+		cut_dir="${type_extract_dir}/${CUTS_DIR_NAME}"
+		clips_dir="${type_extract_dir}/${CLIPS_DIR_NAME}/${number}"
+		mkdir -p "${clips_dir}"
+		cut_video=$(find "${cut_dir}" -name "${filename_escaped} - ${type_extract} - ${number}.*")
+		#cut_video="${cut_dir}/${filename_escaped} - ${type_extract} - ${number}.avi"
+		if [ -e "${filter_clips}" ]
+		then
+			extract_with_filter "${cut_video}" "${clips_dir}" "${list_file}"
+		fi
+		while IFS= read -r 'line' || [[ -n "${line}" ]]
+		do
+			number_clip=$(cut -f1 <<< "${line}")
+			echo "file '../../${clips_dir}/${number_clip}.${FFMPEG_EXT}'" >>  "${final_clips_list_file}"
+		done < "${list_file}"
+	done < <(find "${project_name}/${INPUT_DIR_NAME}/${CLIPS_LIST_DIR_NAME}" -type f -name "${filename_escaped}*.clips" -print)
+done < <(find "${project_name}/${INPUT_DIR_NAME}" -maxdepth 1 -type f -exec file -N --mime-type -- {} + | sed -n 's!: video/[^:]*$!!p')
