@@ -3,13 +3,8 @@ set -o errexit
 set -o nounset
 
 
-ffmpeg_bin=$(./selectFFmpeg.sh "static")
+ffmpeg_bin=$(./selectFFmpeg.sh "stable")
 
-
-#increment_counter() {
-#	counter=$((counter + 1))
-#	echo "${counter}"
-#}
 
 generate_filter_complex_args() {
 	list_clips_file=$1
@@ -108,9 +103,9 @@ multiple_extract() {
 	echo "${counter}"
 }
 
-extract_with_filter() {
+#pas fonctionnelle
+multiple_extract_with_filter() {
 	input=$1
-	#input_extension="${input##*.}"
 	output_dir=$2
 	list_clips_file=$3
 	if [ -d "${output_dir}" ]
@@ -122,21 +117,54 @@ extract_with_filter() {
 			end=$(cut -f3 <<< "${line}")
 			duration=$(./diffTime.sh "${start}" "${end}")
 			output_clip="${output_dir}/${number}.${FFMPEG_EXT}"
+			args_pipe="-f matroska pipe:1"
+			args_filter="${args} ${FFMPEG_UNCOMPRESSED_CODEC_OPTIONS} ${args_pipe}"
+			"${ffmpeg_bin}" -i "${input}" -loglevel ${FFMPEG_LOG_LEVEL} ${args_filter} < /dev/null |  "./multipleExtractFilter.sh" "${input}" "${output_clip}" #"./${filter_clips}" "${output_clip}"
+		done
+	fi
+}
+
+
+extract_with_filter() {
+	input=$1
+	output_dir=$2
+	list_clips_file=$3
+	if [ -d "${output_dir}" ]
+	then
+		while IFS= read -r 'line' || [[ -n "${line}" ]]
+		do
+			number=$(cut -f1 <<< "${line}")
+			start=$(cut -f2 <<< "${line}")
+			end=$(cut -f3 <<< "${line}")
+			duration=$(./diffTime.sh "${start}" "${end}")
+			output_clip="${output_dir}/${number}.${FFMPEG_EXT}"
+			args="${FFMPEG_TEMP_ARGS}"
+			args_pipe="-f matroska pipe:1"
+			args_filter="${args} ${FFMPEG_UNCOMPRESSED_CODEC_OPTIONS} ${args_pipe}"
+			args_no_filter="${args} ${FFMPEG_TEMP_CODEC_OPTIONS}"
 			ss=""
-			args="-to ${end} ${FFMPEG_UNCOMPRESSED_CODEC_OPTIONS} -f matroska pipe:1"
-			if [ "${start}" != "00:00:00" ]
+			tot=""
+			if [ "${start}" != "00:00:00" -a "${start}" != "00:00:00.000" ]
 			then
 				ss="-ss ${start}"
-				args="-ss ${start} ${args}"
+				tot="-to ${end}"
+				#tot="-t ${duration}"
+			else
+				tot="-to ${end}"
 			fi
-			"${ffmpeg_bin}" -fflags +genpts -i "${input}" ${args} < /dev/null | "./${filter_clips}" "${output_clip}"
-			#"${ffmpeg_bin}" -fflags +genpts -i "${input}" -ss "${start}"  -t "${duration}" ${FFMPEG_TEMP_CODEC_OPTIONS} -f matroska pipe:1 < /dev/null |  "./${filter_clips}" "${output_clip}"
+			#args="${tot} ${}"
+			if [ -n ${filter_clips+x} ]
+			then
+				"${ffmpeg_bin}" -i "${input}" ${ss} ${tot} -loglevel ${FFMPEG_LOG_LEVEL} ${args_filter} < /dev/null | "./${PROJECTS_DIR}/${project_name}/${INPUT_DIR_NAME}/${filter_clips}" "${output_clip}"
+			else
+				"${ffmpeg_bin}" -i "${input}" ${ss} ${tot} -loglevel ${FFMPEG_LOG_LEVEL}   ${args_no_filter} "${output_clip}" < /dev/null
+			fi
 		done < "${list_clips_file}"
 	fi
 }
 
 
-final_clips_list_file="${project_name}/${INPUT_DIR_NAME}/${FINAL_CLIPS_LIST_FILE}"
+final_clips_list_file="${PROJECTS_DIR}/${project_name}/${INPUT_DIR_NAME}/${FINAL_CLIPS_LIST_FILE}"
 rm -f "${final_clips_list_file}"
 while IFS= read -r 'video'
 do
@@ -144,30 +172,27 @@ do
 	filename="${filebasename%.*}"
 	filename_escaped=$(sed -e 's/-/_/' <<< "${filename}")
 	extension="${filebasename##*.}"
-	dir="${project_name}/${TEMP_DIR_NAME}/${filename}"
-	mkdir -p "${dir}"
-	counter=0
-	counter_nb=0
+	dir_cuts="${PROJECTS_DIR}/${project_name}/${TEMP_DIR_NAME}/${CUTS_DIR_NAME}"
+	dir_cuts_filename="${dir_cuts}/${filename}"
+	dir_clips="${PROJECTS_DIR}/${project_name}/${TEMP_DIR_NAME}/${CLIPS_DIR_NAME}"
+	dir_clips_filename="${dir_clips}/${filename}"
+	mkdir -p "${dir_clips_filename}"
 	while IFS= read -r 'list_file'
 	do
 		clips_basename=$(basename "${list_file}")
 		clips_filename="${clips_basename%.*}"
 		type_extract=$(cut -d'-' -f2 <<< "${clips_filename}" | sed -e 's/^[[:space:]]//g;s/[[:space:]]$//g')
 		number=$(cut -d'-' -f3 <<< "${clips_filename}" | sed -e 's/^[[:space:]]//g')
-		type_extract_dir="${dir}/${type_extract}"
-		cut_dir="${type_extract_dir}/${CUTS_DIR_NAME}"
-		clips_dir="${type_extract_dir}/${CLIPS_DIR_NAME}/${number}"
+		#type_extract_dir="${dir}/${type_extract}"
+		cut_dir="${dir_cuts_filename}/${type_extract}" #"${type_extract_dir}" #/${CUTS_DIR_NAME}
+		clips_dir="${dir_clips_filename}/${type_extract}/${number}" #"${type_extract_dir}/${number}" #/${CLIPS_DIR_NAME}
 		mkdir -p "${clips_dir}"
 		cut_video=$(find "${cut_dir}" -name "${filename_escaped} - ${type_extract} - ${number}.*")
-		#cut_video="${cut_dir}/${filename_escaped} - ${type_extract} - ${number}.avi"
-		if [ -e "${filter_clips}" ]
-		then
-			extract_with_filter "${cut_video}" "${clips_dir}" "${list_file}"
-		fi
+		extract_with_filter "${cut_video}" "${clips_dir}" "${list_file}"
 		while IFS= read -r 'line' || [[ -n "${line}" ]]
 		do
 			number_clip=$(cut -f1 <<< "${line}")
-			echo "file '../../${clips_dir}/${number_clip}.${FFMPEG_EXT}'" >>  "${final_clips_list_file}"
+			echo "file '../../../${clips_dir}/${number_clip}.${FFMPEG_EXT}'" >>  "${final_clips_list_file}"
 		done < "${list_file}"
-	done < <(find "${project_name}/${INPUT_DIR_NAME}/${CLIPS_LIST_DIR_NAME}" -type f -name "${filename_escaped}*.clips" -print)
-done < <(find "${project_name}/${INPUT_DIR_NAME}" -maxdepth 1 -type f -exec file -N --mime-type -- {} + | sed -n 's!: video/[^:]*$!!p')
+	done < <(find "${PROJECTS_DIR}/${project_name}/${INPUT_DIR_NAME}/${CLIPS_LIST_DIR_NAME}" -type f -name "${filename_escaped}*.clips" -print | sort -n)
+done < <(find "${PROJECTS_DIR}/${project_name}/${INPUT_DIR_NAME}" -maxdepth 1 -type f -exec file -N --mime-type -- {} + | sed -n 's!: video/[^:]*$!!p')
