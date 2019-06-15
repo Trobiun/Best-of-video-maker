@@ -2,9 +2,11 @@
 set -o errexit
 set -o nounset
 
+ffmpeg_dir=$(./selectFFmpeg.sh "stable")
+ffmpeg_bin="${ffmpeg_dir}/ffmpeg"
+ffprobe_bin="${ffmpeg_dir}/ffprobe"
 
-ffmpeg_bin=$(./selectFFmpeg.sh "stable")
-
+#extrait l'extrait vidéo entre les moments 'start' et 'end' de la vidéo 'input'
 extract() {
 	input=$1
 	start=$2
@@ -28,18 +30,20 @@ extract() {
 	fi
 }
 
-
+#parcourt les fichiers vidéo
 while IFS= read -r 'video'
 do
 	filebasename="$(basename "${video}")"
 	filename="${filebasename%.*}"
 	dir="${PROJECTS_DIR}/${project_name}/${TEMP_DIR_NAME}/${CUTS_DIR_NAME}/${filename}"
 	mkdir -p "${dir}"
+	#parcourt les fichiers d'extraits de la vidéo
 	while IFS= read -r 'list_file'
 	do
 		type_extracts="${list_file##*.}"
 		type_extracts_dir="${dir}/${type_extracts}"
 		mkdir -p "${type_extracts_dir}" #/${CUTS_DIR_NAME}
+		#parcourt les lignes des fichiers d'extraits
 		while IFS= read -r 'line' || [[ -n "${line}" ]]
 		do
 			number=$(cut -f1 <<< "${line}")
@@ -53,7 +57,7 @@ do
 			final_clips_lists="${PROJECTS_DIR}/${project_name}/${INPUT_DIR_NAME}/${CLIPS_LIST_DIR_NAME}/${cut_filename}.clips"
 			if [ ! -f "${final_clips_lists}" ]
 			then
-				duration=$(ffprobe -v error -select_streams v:0 -show_entries stream=duration -of default=noprint_wrappers=1:nokey=1 -sexagesimal "${type_extracts_dir}/${cut_file}")
+				duration=$("${ffprobe_bin}" -v error -select_streams v:0 -show_entries stream=duration -of default=noprint_wrappers=1:nokey=1 -sexagesimal "${type_extracts_dir}/${cut_file}")
 				mkdir -p "${PROJECTS_DIR}/${project_name}/${INPUT_DIR_NAME}/${CLIPS_LIST_DIR_NAME}"
 				echo "01	00:00:00.000	${duration}" > "${final_clips_lists}"
 			fi

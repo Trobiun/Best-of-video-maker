@@ -4,6 +4,8 @@ set -o nounset
 
 
 DEFAULT_CONFIG="defaultConfig.cfg"
+ffmpeg_dir=$(./selectFFmpeg.sh "stable")
+ffprobe_bin="${ffmpeg_dir}/ffprobe"
 
 
 generate_project() {
@@ -27,7 +29,8 @@ add_input() {
 	cuts_lists_dir="${PROJECTS_DIR}/${project_name}/${INPUT_DIR_NAME}/${CUTS_DIR_NAME}_lists"
 	mkdir -p "${cuts_lists_dir}"
 	input_name=$(basename "${input}")
-	touch "${cuts_lists_dir}/${input_name%.*}.list"
+	duration=$("${ffprobe_bin}" -v error -select_streams v:0 -show_entries stream=duration -of default=noprint_wrappers=1:nokey=1 -sexagesimal "${PROJECTS_DIR}/${project_name}/${INPUT_DIR_NAME}/${input_name}")
+	echo "01	00:00:00.000	${duration}" > "${cuts_lists_dir}/${input_name%.*}.list"
 }
 
 add_filter() {

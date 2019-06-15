@@ -3,7 +3,8 @@ set -o errexit
 set -o nounset
 
 
-ffmpeg_bin=$(./selectFFmpeg.sh "stable")
+ffmpeg_dir=$(./selectFFmpeg.sh "stable")
+ffmpeg_bin="${ffmpeg_dir}/ffmpeg"
 
 
 generate_filter_complex_args() {
@@ -155,7 +156,7 @@ extract_with_filter() {
 			#args="${tot} ${}"
 			if [ -n ${filter_clips+x} ]
 			then
-				"${ffmpeg_bin}" -i "${input}" ${ss} ${tot} -loglevel ${FFMPEG_LOG_LEVEL} ${args_filter} < /dev/null | "./${PROJECTS_DIR}/${project_name}/${INPUT_DIR_NAME}/${filter_clips}" "${output_clip}"
+				"${ffmpeg_bin}" -i "${input}" ${ss} ${tot} -loglevel ${FFMPEG_LOG_LEVEL} ${args_filter} < /dev/null | "./${PROJECTS_DIR}/${filter_clips}" "${output_clip}"
 			else
 				"${ffmpeg_bin}" -i "${input}" ${ss} ${tot} -loglevel ${FFMPEG_LOG_LEVEL}   ${args_no_filter} "${output_clip}" < /dev/null
 			fi
